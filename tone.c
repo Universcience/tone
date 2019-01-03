@@ -1,5 +1,5 @@
 /*  Quick and dirty WAV output tone generator.
- *  Copyright (C) 2017 - Jérôme Kirman
+ *  Copyright (C) 2017-2019 - Jérôme Kirman
  *
  *  This program is free software: you can redistribute it and/or modify it
  *  under the terms of the GNU Affero General Public License as published by
@@ -23,11 +23,9 @@
 #include <limits.h>
 
 typedef short sample;
-
 #define SAMPLE_MAX SHRT_MAX
 
-// Black GCC magic AFAIC.
-struct __attribute__((packed)) header {
+struct header {
 	// RIFF header
 	char riff[4];
 	unsigned int rlen;
@@ -57,51 +55,48 @@ struct __attribute__((packed)) header {
  La Sib Si Do Do# Re Mib Mi Fa Fa# Sol Lab
 */
 
-double note (int n)
-{
-	return 440 * pow(2, ((double) n)/12);
-}
+#define Note(n) (440 * pow(2, n/12.0))
+
+#define T 7
+
+#define BD 16
+#define NCH 1
+#define SR 48000
+
+#define FLEN (2 + 2 + 4 + 4 + 2 + 2) // "fmt " contents
+#define DLEN (T * SR * NCH * (BD/8)) // "data" contents
+
+// "WAVE" + ("fmt " + FLEN + contents) + ("data" + DLEN + contents)
+#define RLEN (4 + (4 + 4 + FLEN) + (4 + 4 + DLEN))
 
 int main (int argc, char* argv[])
 {
-	char* outfile = "out.wav";
-	double f = note(0);
+	const char* outfile = "out.wav";
+	double f = Note(0);
 
-	if (argc > 1) { f = note(atoi(argv[1])); }
+	if (argc > 1) { f = Note(atoi(argv[1])); }
 	if (argc > 2) { outfile = argv[2]; }
 
-	unsigned int t = 7;
-
-	unsigned short bd = 16, nch = 1;
-	unsigned int sr = 48000;
-
-	unsigned short flen = 2 + 2 + 4 + 4 + 2 + 2; // fmt contents
-	unsigned int dlen = t * sr * nch * (bd/8);   // data contents
-
-	unsigned int rlen = 4               // "WAVE"
-	                  + (4 + 4) + flen  // fmt  (+hdr)
-	                  + (4 + 4) + dlen; // data (+hdr)
-
 	struct header hdr = {
-	"RIFF", rlen,
+	"RIFF", RLEN,
 		"WAVE",
-		"fmt ", flen,
+		"fmt ", FLEN,
 			0x1,
-			nch,
-			sr,
-			nch*sr*(bd/8),
-			nch*(bd/8),
-			bd,
-		"data", dlen
+			NCH,
+			SR,
+			NCH*SR*(BD/8),
+			NCH*(BD/8),
+			BD,
+		"data", DLEN
 	};
 
 	FILE* of = fopen(outfile, "w");
 
 	fwrite (&hdr, sizeof(hdr), 1, of);
 
-	float amp = 0.0;
+	double amp = 0.0;
 	sample s = 0;
-	for (unsigned i = 0 ; i < t * sr ; i++)
+	for (unsigned i = 0 ; i < T * SR ; ++i)
 	{
 		/* Undertale - (C) Toby Fox
 		 . < v > ^
@@ -110,26 +105,27 @@ int main (int argc, char* argv[])
 		 . ^  > . v v >
 		 3 10 8 3 7 7 8... 3 8 3 7 7 8
 		*/
-		switch (20*i / sr)
+		switch (20*i / SR)
 		{
-			case   0: f = note( 3); break;
-			case  10: f = note(10); break;
-			case  20: f = note( 8); break;
-			case  30: f = note( 3); break;
-			case  40: f = note( 7); break;
-			case  50: f = note( 7); break;
-			case  60: f = note( 8); break;
-			case  70: f = note( 3); break;
-			case  80: f = note( 8); break;
-			case  90: f = note( 3); break;
-			case 100: f = note( 7); break;
-			case 110: f = note( 7); break;
-			case 120: f = note( 8); break;
+			case   0: f = Note( 3); break;
+			case  10: f = Note(10); break;
+			case  20: f = Note( 8); break;
+			case  30: f = Note( 3); break;
+			case  40: f = Note( 7); break;
+			case  50: f = Note( 7); break;
+			case  60: f = Note( 8); break;
+			case  70: f = Note( 3); break;
+			case  80: f = Note( 8); break;
+			case  90: f = Note( 3); break;
+			case 100: f = Note( 7); break;
+			case 110: f = Note( 7); break;
+			case 120: f = Note( 8); break;
+			default: break;
 		}
-		if (20*i / sr % 10 == 9) { f = 0; }
+		if (20*i / SR % 10 == 9) { f = 0; }
 
-		amp = (float) sin(i * 2*M_PI * f / sr);
-		s = amp * SAMPLE_MAX/8;
+		amp = sin(i * 2*M_PI * f / SR);
+		s = (sample) lrint(amp * SAMPLE_MAX/8);
 		fwrite (&s, sizeof(sample), 1, of);
 	}
 
